@@ -348,7 +348,7 @@ def login():
     return response
     # return render_template("login.html", error=error)
 
-
+# recives vibration and audio input
 @app.route("/signal_api", methods=["GET", "POST"])
 def signal_api():
     global collectionTimeStamp

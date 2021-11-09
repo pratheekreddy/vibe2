@@ -9,6 +9,7 @@ import pandas as pd
 import statistics
 from scipy.signal import find_peaks, spectrogram
 from flask_cors import CORS
+import wave
 
 app = Flask(__name__)
 app.secret_key = b'_5#y2L"F4Q8z\n\xec]/'
@@ -48,8 +49,88 @@ def smooth_sample(sample, smoothing=10):
     frame = frame.shift(periods=-smoothing // 2)
     norm = np.subtract(sample, frame.values.reshape(len(sample), ))
     return norm
+"""
+START OF AUDIO CODE
+THIS CODE RETURNS THE ACCURACY OF THE VIBRATION
+"""
+def closest(x):
+    arr = np.array([45,65,85,105,125,145,165,185,205,225,245,265,285,305,325,345])
+    difference_array = np.absolute(arr-x)
+    index = difference_array.argmin()
+    return index
+
+def accuracy(true_code,two_fa):
+    distance=0
+    if(len(true_code)!= len(two_fa)):
+        return 0
+    for i in range(0, len(true_code)):
+        diff = abs(int(two_fa[i], 16) - int(true_code[i], 16))
+        distance+=diff
+    totalHexBits = len(true_code) * 4 
+    percentCorrect = round(((totalHexBits - distance) / totalHexBits) * 100, 4)
+    return percentCorrect
+
+def visualize(file):
+    
+    raw = wave.open(file)
+
+    mapping={0:'0',1:'1',2:'2',3:'3',4:'4',5:'5',6:'6',7:'7',8:'8',9:'9',10:'A',11:'B',12:'C',13:'D',14:'E',15:'F'}
+    
+    signal = raw.readframes(-1)
+    signal = np.frombuffer(signal, dtype ="int16")
+    f_rate = raw.getframerate()
+    frames = raw.getnframes()
+    duration = frames / float(f_rate)
+    print(duration)
+    two_fa=''
+
+    val=len(signal)//4000
+    n=len(signal)-val*4000
+
+    for x in range(1, n+1, 1):
+        signal=np.delete(signal,len(signal)-1,0)
+
+    final=np.mean(signal.reshape(-1, val), axis=1)
 
 
+    time = np.linspace(
+        0, # start
+        len(final),
+        num = len(final)
+    )
+
+    positive=final>0
+    po=final[positive]
+    pavg=np.average(po)*1.7
+    navg=-0.8*pavg
+
+    #------------------
+    code=[]
+
+    for x in range(0,len(final),1):
+        if(final[x]>pavg):
+            code.append(x)
+
+    first=0
+    error=0
+    for x in range(len(code)-1):
+        if(code[x+1]-code[x]>10):
+            error=error+1
+            if(code[x]-code[first]>25):
+                d=code[x]-code[first]
+                a=closest(d)
+                two_fa=two_fa+mapping[a]
+            last=code[x+1]
+            first=x+1
+
+    a=closest(code[len(code)-1]-last)
+    two_fa=two_fa+mapping[a]
+    print(two_fa)
+    return (accuracy(trueCode,two_fa))
+
+"""
+    END OF AUDIO CODE
+"""
 """rand_key
 Generate a random auth token.
 - char_options: List containing all possible characters in the string
@@ -362,11 +443,13 @@ def signal_api():
         response.headers.add('Access-Control-Allow-Origin', 'http://localhost:6060')
         return response
     if request.method == "POST":
-        data = np.array(json.loads(request.data.decode("utf-8"))["data"])
+        audio=request.data.audio
+        audioAccuracy=visualize(audio)
+        data = np.array(json.loads(request.data.fullRecording.decode("utf-8"))["data"])
         # np.savetxt('raw_data', data, delimiter=",")
         codeAccuracy = process_signal(data)
         # time.sleep(5)
-        if codeAccuracy >= 75.00:
+        if codeAccuracy >= 75.00 or audioAccuracy>=75:
             print("We're in")
             authenticated = True
             # return redirect(u0rl_for("welcome"))
@@ -385,7 +468,7 @@ def signal_api():
 
 
 if __name__ == '__main__':
-    socketio.run(app)
+    app.run()
 
 
 hex_table_setter()
